@@ -16,6 +16,8 @@
 # under the License.
 """Unit tests for Rison filter parser."""
 
+import logging
+
 import pytest
 
 from superset.utils.rison_filters import RisonFilterParser
@@ -136,22 +138,22 @@ def test_invalid_rison():
 
 def test_invalid_rison_logs_warning(caplog):
     parser = RisonFilterParser()
-    with caplog.at_level("WARNING"):
+    with caplog.at_level(logging.WARNING):
         assert parser.parse("(unclosed") == []
     assert "Failed to parse Rison filters" in caplog.text
 
 
 def test_conversion_errors_are_not_swallowed(mocker):
-    """A bug in the conversion logic must surface instead of being logged as a
-    Rison parsing failure."""
+    """An unexpected error in the conversion logic must surface rather than
+    being reported as a Rison parsing failure."""
     parser = RisonFilterParser()
     mocker.patch.object(
         parser,
         "_convert_to_adhoc_filters",
-        side_effect=ValueError("boom"),
+        side_effect=RuntimeError("boom"),
     )
 
-    with pytest.raises(ValueError, match="boom"):
+    with pytest.raises(RuntimeError, match="boom"):
         parser.parse("(country:USA)")
 
 
