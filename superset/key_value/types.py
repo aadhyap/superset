@@ -80,7 +80,9 @@ class JsonKeyValueCodec(KeyValueCodec):
     def decode(self, value: bytes) -> dict[Any, Any]:
         try:
             return json.loads(value)
-        except TypeError as ex:
+        except (TypeError, ValueError) as ex:
+            # ValueError covers json.JSONDecodeError and UnicodeDecodeError, raised
+            # when the stored bytes aren't valid JSON (e.g. written by another codec)
             raise KeyValueCodecDecodeException(str(ex)) from ex
 
 

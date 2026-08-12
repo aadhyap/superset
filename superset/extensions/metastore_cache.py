@@ -24,8 +24,12 @@ from flask_caching import BaseCache
 from sqlalchemy.exc import SQLAlchemyError
 
 from superset import db
-from superset.key_value.exceptions import KeyValueCreateFailedError
+from superset.key_value.exceptions import (
+    KeyValueCodecDecodeException,
+    KeyValueCreateFailedError,
+)
 from superset.key_value.types import (
+    JsonKeyValueCodec,
     KeyValueCodec,
     KeyValueResource,
     PickleKeyValueCodec,
@@ -55,7 +59,10 @@ class SupersetMetastoreCache(BaseCache):
     ) -> BaseCache:
         seed = config.get("CACHE_KEY_PREFIX", "")
         kwargs["namespace"] = get_uuid_namespace(seed, app)
-        codec = config.get("CODEC") or PickleKeyValueCodec()
+        # Pickle deserialization can construct arbitrary Python objects, so it is
+        # only used when an operator opts in by configuring it explicitly; the
+        # default is the safe JSON codec.
+        codec = config.get("CODEC") or JsonKeyValueCodec()
         if (
             has_app_context()
             and not current_app.debug
@@ -114,7 +121,17 @@ class SupersetMetastoreCache(BaseCache):
         # pylint: disable=import-outside-toplevel
         from superset.daos.key_value import KeyValueDAO
 
-        return KeyValueDAO.get_value(RESOURCE, self.get_key(key), self.codec)
+        try:
+            return KeyValueDAO.get_value(RESOURCE, self.get_key(key), self.codec)
+        except KeyValueCodecDecodeException:
+            # The entry was written with a different codec than the configured one
+            # (e.g. by a deployment that relied on the implicit pickle codec before
+            # the default became JSON); treat it as a cache miss.
+            logger.warning(
+                "Unable to decode cache entry with the configured codec, "
+                "treating it as a cache miss."
+            )
+            return None
 
     def has(self, key: str) -> bool:
         entry = self.get(key)
