@@ -21,7 +21,10 @@ import pytest
 from marshmallow import Schema
 
 from superset.dashboards.permalink.schemas import DashboardPermalinkSchema
-from superset.key_value.exceptions import KeyValueCodecEncodeException
+from superset.key_value.exceptions import (
+    KeyValueCodecDecodeException,
+    KeyValueCodecEncodeException,
+)
 from superset.key_value.types import (
     BinaryKeyValueCodec,
     JsonKeyValueCodec,
@@ -61,6 +64,33 @@ def test_json_codec(input_: Any, expected_result: Any):
         codec = JsonKeyValueCodec()
         encoded_value = codec.encode(input_)
         assert expected_result == codec.decode(encoded_value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        PickleKeyValueCodec().encode({"foo": "bar"}),
+        b"not json",
+    ],
+)
+def test_json_codec_decode_invalid_payload(value: bytes):
+    codec = JsonKeyValueCodec()
+    with pytest.raises(KeyValueCodecDecodeException):
+        codec.decode(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        JsonKeyValueCodec().encode({"foo": "bar"}),
+        b"not a pickle",
+        b"",
+    ],
+)
+def test_pickle_codec_decode_invalid_payload(value: bytes):
+    codec = PickleKeyValueCodec()
+    with pytest.raises(KeyValueCodecDecodeException):
+        codec.decode(value)
 
 
 @pytest.mark.parametrize(

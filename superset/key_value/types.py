@@ -80,7 +80,9 @@ class JsonKeyValueCodec(KeyValueCodec):
     def decode(self, value: bytes) -> dict[Any, Any]:
         try:
             return json.loads(value)
-        except TypeError as ex:
+        except (TypeError, ValueError) as ex:
+            # ValueError covers json.JSONDecodeError and UnicodeDecodeError, raised
+            # when the stored bytes aren't valid JSON (e.g. written by another codec)
             raise KeyValueCodecDecodeException(str(ex)) from ex
 
 
@@ -89,7 +91,13 @@ class PickleKeyValueCodec(KeyValueCodec):
         return pickle.dumps(value)
 
     def decode(self, value: bytes) -> dict[Any, Any]:
-        return pickle.loads(value)  # noqa: S301
+        try:
+            return pickle.loads(value)  # noqa: S301
+        except Exception as ex:  # pylint: disable=broad-except
+            # pickle raises a wide range of exceptions (UnpicklingError, EOFError,
+            # AttributeError, ...) when the stored bytes aren't a pickle stream
+            # written by this deployment, e.g. bytes written by another codec
+            raise KeyValueCodecDecodeException(str(ex)) from ex
 
 
 class BinaryKeyValueCodec(KeyValueCodec):
