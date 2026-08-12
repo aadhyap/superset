@@ -20,6 +20,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 
 
@@ -204,3 +205,52 @@ def test_load_examples_from_configs_defaults(
         force_data=False,
     )
     mock_command.run.assert_called_once()
+
+
+@patch("superset.examples.utils.ImportExamplesCommand")
+def test_load_configs_from_directory_strips_type_from_metadata(mock_command_cls):
+    """Metadata is parsed safely and the "type" key is dropped before import."""
+    from superset.examples.utils import load_configs_from_directory
+
+    mock_command = MagicMock()
+    mock_command_cls.return_value = mock_command
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        (root / "metadata.yaml").write_text(
+            "version: '1.0.0'\n"
+            "type: Dashboard\n"
+            "timestamp: '2020-12-11T22:52:56.534241+00:00'\n"
+        )
+        (root / "dashboards").mkdir()
+        (root / "dashboards" / "test.yaml").write_text(
+            yaml.dump({"dashboard_title": "Test Dashboard", "version": "1.0.0"})
+        )
+
+        load_configs_from_directory(root)
+
+    contents = mock_command_cls.call_args[0][0]
+    assert "dashboards/test.yaml" in contents
+    metadata = yaml.safe_load(contents["metadata.yaml"])
+    assert "type" not in metadata
+    assert metadata["version"] == "1.0.0"
+    mock_command.run.assert_called_once()
+
+
+@patch("superset.examples.utils.ImportExamplesCommand")
+def test_load_configs_from_directory_rejects_arbitrary_python_objects(
+    mock_command_cls,
+):
+    """Metadata with Python object tags must not be deserialized."""
+    from superset.examples.utils import load_configs_from_directory
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        (root / "metadata.yaml").write_text(
+            "version: '1.0.0'\nevil: !!python/object/apply:os.system ['echo pwned']\n"
+        )
+
+        with pytest.raises(yaml.YAMLError):
+            load_configs_from_directory(root)
+
+    mock_command_cls.assert_not_called()
