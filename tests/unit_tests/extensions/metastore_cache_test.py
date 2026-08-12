@@ -71,6 +71,21 @@ def test_get_treats_undecodable_entry_as_miss(
     assert cache.has(KEY) is False
 
 
+def test_get_treats_undecodable_pickle_entry_as_miss(
+    app: Flask, mocker: MockerFixture
+) -> None:
+    """A pickle-configured cache reading a JSON entry is a miss, not an error."""
+    cache = build_cache(app, {"CODEC": PickleKeyValueCodec()})
+    entry = mocker.MagicMock()
+    entry.value = JsonKeyValueCodec().encode({"foo": "bar"})
+    entry.is_expired.return_value = False
+    mocker.patch(
+        "superset.daos.key_value.KeyValueDAO.get_entry",
+        return_value=entry,
+    )
+    assert cache.get(KEY) is None
+
+
 def test_get_returns_json_encoded_entry(app: Flask, mocker: MockerFixture) -> None:
     cache = build_cache(app, {})
     entry = mocker.MagicMock()

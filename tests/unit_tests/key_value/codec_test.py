@@ -80,6 +80,20 @@ def test_json_codec_decode_invalid_payload(value: bytes):
 
 
 @pytest.mark.parametrize(
+    "value",
+    [
+        JsonKeyValueCodec().encode({"foo": "bar"}),
+        b"not a pickle",
+        b"",
+    ],
+)
+def test_pickle_codec_decode_invalid_payload(value: bytes):
+    codec = PickleKeyValueCodec()
+    with pytest.raises(KeyValueCodecDecodeException):
+        codec.decode(value)
+
+
+@pytest.mark.parametrize(
     "schema,input_,expected_result",
     [
         (
